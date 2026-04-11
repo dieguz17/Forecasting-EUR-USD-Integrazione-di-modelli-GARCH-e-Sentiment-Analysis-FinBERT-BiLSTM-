@@ -1,0 +1,1096 @@
+ domande da fare
+ 
+ letteratura e affidabiita siti? 
+ 
+ quanto deve essere lunga la tesi e quanto approfondire ogni parte?
+ 
+ struttra progetto
+ 
+ vanno bene i dati simulati?
+ 
+ come procedere con il ML
+ 
+ 
+ 
+ 
+ 1 Cos'è il mercato forex?
+il mercato forex è un mercato internazione per lo scambio valutario. é il più grande mercato finanziario al mondo, considerando viene scambiata in media una quantità pari  7.500 miliardi di dollari al giorno. Il mercato è composto da banche, scoietà commerciali banche centrali, società di gestione degli investimenti, hedge fund, broker forex al dettaglio e investitori. é un mercato OTC, non è presente una borsa centralizzata. Le valute si muovono tra operatori tramite i broker. il merato è aperto 24 ore al giorno a partire dal lunedi mattina in asia, fino al venerdi pomeriggio a new york.
+
+
+
+2 Perchè EUR/USD 
+Le valute vengono scambiate in coppia nel forex, ogni coppia è composta da due valute. La coppia più scambiata del mercato è EUR/USD, a causa dell'importanza economica e  politica delle due valute. In particolare, garantisce elevata liquidità e maggiore stabilità
+
+3 Importanza della volatilità
+La volatilità misura la variazione percentuale del prezzo di uno strumento finanziario nel corso del tempo. In finanza come indice di volatilità si usa la varianza .
+
+Nella maggior parte dei casi, maggiore è la voltilità, maggiore è il rischio.
+ A periodi di alta volatilità tendono a seguire altri periodi di alta volatilità e periodi di bassa volatilità seguono periodi di bassa volatilità(volatility clustering).
+ La volatilità è un elemento cruciale per la gestione del rischio e prevedere l'andamento futuro dei prezzi.
+ 
+
+
+4 Limiti della previsione deterministica del prezzo
+Secondo l’Efficient Market Hypothesis, i prezzi degli asset riflettono tutte le informazioni disponibili, rendendo difficile ottenere rendimenti superiori tramite l’uso di strategie basate su informazioni passate.
+La random walk hypothesis suggerisce che i prezzi seguono un percorso casuale, implicando che variazioni future non possono essere previste accuratamente tramite modelli deterministici.
+
+proprietà empiriche osservate nei rendimenti di vari mercati:
+Fat Tails
+Volatility Clustering
+Gain/loss asymmetry
+Aggregational Gaussianity
+Slow decay dell’autocorrelazione dei rendimenti
+Leverage effect
+
+
+
+5 Obbiettivo della tesi
+L’obiettivo di questa tesi è modellare e prevedere la volatilità del tasso di cambio EUR/USD mediante modelli di famiglia GARCH e utilizzare tali stime per simulare possibili traiettorie future del prezzo attraverso tecniche Monte Carlo, al fine di ottenere una rappresentazione probabilistica degli andamenti futuri del cambio.
+In particolare, il lavoro si propone di analizzare le principali proprietà statistiche dei rendimenti del tasso di cambio considerato, stimare e confrontare diversi modelli di volatilità, valutarne la capacità predittiva e impiegare le stime ottenute per la simulazione di scenari futuri del prezzo.
+La tesi non mira a fornire previsioni deterministiche o indicazioni operative di investimento, ma si concentra su un approccio probabilistico, coerente con le caratteristiche empiriche dei mercati finanziari.
+
+
+
+6 Descrizione dei dati
+I dati utilizzati in questo lavoro sono i tassi di cambio giornalieri della coppia EUR/USD, estratti dalla piattaforma Yahoo Finance. La serie storica copre il periodo compreso tra 2010 e 2025 ed è composta da osservazioni giornaliere del tasso di cambio.
+In questo lavoro sono stati utilizzati dati a frequenza giornaliera, in quanto tale frequenza rappresenta un compromesso adeguato tra informazione disponibile e rumore di mercato.
+Il campione analizzato copre il periodo 2010-2025. Tale orizzonte temporale consente di includere diverse fasi di mercato, garantendo stabilità dei parametri del modello.
+STEP R
+
+1 Download dei dati
+
+EUR/USD
+Yahoo Finance
+```{r}
+
+
+library(quantmod)
+library(tidyverse)
+
+
+getSymbols("EURUSD=X", src = "yahoo",
+           from = "2010-01-01",
+           to = "2025-04-16",
+           auto.assign = TRUE)
+
+
+head(`EURUSD=X`)
+
+
+```
+
+
+
+ 2  Pulizia e trasformazione
+
+prezzi di chiusura
+log-returns
+
+```{r}
+
+eurusd <- na.omit(`EURUSD=X`)
+
+
+price <- Ad(eurusd)
+
+
+log_returns <- dailyReturn(price, type = "log")
+
+
+real_returns <- log_returns[-1]   
+
+head(real_returns)
+
+```
+```{r}
+
+```
+
+ 3  Analisi esplorativa
+
+grafico prezzi
+
+grafico returns
+
+statistiche descrittive
+ confrontare forex standardizzato e distribuzioni standardizzate
+
+assenza di autocorrelazione nei returns
+
+clustering della volatilità
+
+code pesanti
+dataset simulato garch 1.1
+```{r}
+library(rugarch)
+library(FinTS)
+
+
+spec_sim <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std"  )
+
+
+setfixed(spec_sim) <- list(
+  mu     = 0,
+  omega  = 0.000001,  
+  alpha1 = 0.06,    
+  beta1  = 0.92,
+  shape  = 8
+)
+
+
+set.seed(123)
+n <- 3500  
+sim <- ugarchpath(spec_sim, n.sim = n)
+
+
+sim_returns <- as.numeric(fitted(sim))
+
+
+
+any(is.na(sim_returns))
+sum(is.na(sim_returns))  
+
+
+
+
+
+```
+```{r}
+
+spec_gjr <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+
+setfixed(spec_gjr) <- list(mu=0, omega=1e-6, alpha1=0.03, beta1=0.90, gamma1=0.07, shape=8)
+
+set.seed(123)
+sim_gjr <- ugarchpath(spec_gjr, n.sim = 3500)
+returns_gjr <- as.numeric(fitted(sim_gjr))
+```
+
+```{r}
+
+spec_egarch <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+
+
+setfixed(spec_egarch) <- list(mu=0, omega=-0.5, alpha1=0.01, beta1=0.98, gamma1=0.05, shape=8)
+
+set.seed(123)
+sim_egarch <- ugarchpath(spec_egarch, n.sim = 3500)
+returns_egarch <- as.numeric(fitted(sim_egarch))
+```
+
+```{r}
+par(mfrow=c(3,1))
+plot(as.numeric(sigma(sim)), type="l", main="Volatilità sGARCH (Simmetrico)", col="blue")
+plot(as.numeric(sigma(sim_gjr)), type="l", main="Volatilità GJR-GARCH (Asimmetrico)", col="red")
+plot(as.numeric(sigma(sim_egarch)), type="l", main="Volatilità EGARCH (Esponenziale)", col="green")
+```
+
+```{r}
+library(tseries)
+
+
+adf.test(sim_returns)
+adf.test(returns_gjr)
+adf.test(returns_egarch)
+adf.test(real_returns)
+
+```
+Test per confontare e valutare stazionarieta.ci aspettiamo p < 0.05 → conferma stazionarietà.
+valuatre test piu robusto
+
+
+```{r}
+
+library(moments)
+
+
+summary(sim_returns)
+sd(sim_returns)
+kurtosis(sim_returns)
+skewness(sim_returns)
+
+
+
+
+```
+```{r}
+library(moments)
+
+
+summary(returns_gjr)
+sd(returns_gjr)
+kurtosis(returns_gjr)
+skewness(returns_gjr)
+
+
+```
+```{r}
+library(moments)
+
+
+summary(returns_egarch)
+sd(returns_egarch)
+kurtosis(returns_egarch)
+skewness(returns_egarch)
+```
+
+
+```{r}
+library(moments)
+summary(real_returns)
+sd(real_returns)
+kurtosis(real_returns)
+skewness(real_returns)
+```
+```{r}
+par(mfrow=c(2,1))
+plot(sim_returns, type="l", main="Returns Simulati GARCH", ylab="Return")
+plot(real_returns, type="l", main="Returns EUR/USD", ylab="Return")
+plot(returns_gjr, type="l", main="Returns Simulati gjr", ylab="Return")
+plot(returns_egarch, type="l", main="Returns simulati e", ylab="Return")
+
+
+```
+```{r}
+plot_acf_no0 <- function(series, main_title) {
+  acf_res <- acf(series, plot = FALSE)
+  acf_vals <- acf_res$acf[-1]  
+  lags <- acf_res$lag[-1]
+  
+  
+  n <- length(series)
+  conf <- qnorm(0.975)/sqrt(n)
+  
+  plot(lags, acf_vals, type = "h", lwd=2,
+       main = main_title,
+       xlab = "Lag", ylab = "Autocorrelazione",
+       ylim = c(min(acf_vals, -conf), max(acf_vals, conf)))
+  
+  
+  abline(h = conf, col="blue", lty=2)
+  abline(h = -conf, col="blue", lty=2)
+  abline(h = 0, col="red", lty=2)
+}
+plot_acf_no0(sim_returns, "ACF Returns Simulati (senza lag 0)")
+
+
+plot_acf_no0(real_returns, "ACF Returns EUR/USD (senza lag 0)")
+
+
+plot_acf_no0(sim_returns^2, "ACF Returns^2 Simulati (senza lag 0)")
+
+
+plot_acf_no0(real_returns^2, "ACF Returns^2 EUR/USD (senza lag 0)")
+
+plot_acf_no0(returns_egarch, "ACF Returns Simulati e (senza lag 0)")
+
+
+plot_acf_no0(returns_gjr, "ACF Returns gjr (senza lag 0)")
+
+
+plot_acf_no0(returns_egarch^2, "ACF Returns^2 e Simulati (senza lag 0)")
+
+
+plot_acf_no0(returns_gjr^2, "ACF Returns^2 gjr (senza lag 0)")
+
+```
+quasi tutte le barre sono dentro gli intervalli quindi i returns non sono autocorrelati per i returns, mentre il contrario per i return^2
+
+```{r}
+library(FinTS)
+
+
+ArchTest(sim_returns, lags=10)
+
+
+
+ArchTest(real_returns, lags=10)
+ArchTest(returns_gjr, lags=10)
+
+
+
+ArchTest(returns_egarch, lags=10)
+
+
+```
+p-value basso quindi effetto arch presente quindi i garch possono catturare la volatilita condizionata di eur/usd
+```{r}
+par(mfrow=c(2,1))
+hist(sim_returns, breaks=50, probability=TRUE, main="Distribuzione Simulata")
+hist(real_returns, breaks=50, probability=TRUE, main="Distribuzione EUR/USD")
+par(mfrow=c(2,1))
+hist(returns_egarch, breaks=50, probability=TRUE, main="Distribuzione egarch")
+hist(returns_gjr, breaks=50, probability=TRUE, main="Distribuzione gjr")
+
+
+```
+
+5 Stima GARCH
+
+GARCH(1,1)
+
+```{r}
+
+library(rugarch)
+
+
+n <- length(real_returns)
+n_train <- round(0.80 * n)
+train_data <- real_returns[1:n_train]
+test_data  <- real_returns[(n_train + 1):n]
+
+
+n_start_cv <- round(n_train * 0.70) 
+
+
+run_cv <- function(spec, data, start) {
+  roll <- ugarchroll(spec, data = data, n.start = start, 
+                     refit.window = "moving", refit.every = 50, 
+                     calculate.VaR = FALSE, keep.coef = TRUE)
+  return(roll)
+}
+```
+split train test
+```{r}
+
+spec_s   <- ugarchspec(variance.model = list(model = "sGARCH"), distribution.model = "std")
+spec_gjr <- ugarchspec(variance.model = list(model = "gjrGARCH"), distribution.model = "std")
+spec_e   <- ugarchspec(variance.model = list(model = "eGARCH"), distribution.model = "std")
+
+
+cv_s   <- run_cv(spec_s, train_data, n_start_cv)
+cv_gjr <- run_cv(spec_gjr, train_data, n_start_cv)
+cv_e   <- run_cv(spec_e, train_data, n_start_cv)
+```
+
+
+sclego sul train cv il miglior modello
+
+```{r}
+
+get_mse_cv <- function(roll) {
+  df <- as.data.frame(roll)
+  
+    mse <- mean(((df$Realized - df$Mu)^2 - df$Sigma)^2)
+  return(mse)
+}
+
+
+cv_results <- data.frame(
+  Modello = c("sGARCH", "GJR-GARCH", "eGARCH"),
+  MSE_Average_CV = c(get_mse_cv(cv_s), get_mse_cv(cv_gjr), get_mse_cv(cv_e))
+)
+
+print("--- Risultati Cross-Validation sul Train Set ---")
+print(cv_results)
+```
+```{r}
+
+install.packages("forecast")
+
+
+library(forecast)
+get_loss_vector <- function(roll) {
+ 
+  results <- roll@forecast$density
+  
+  
+  df <- as.data.frame(results)
+  
+  
+  loss <- ((df$Realized - df$Mu)^2 - df$Sigma^2)^2
+  
+  return(loss)
+}
+
+#
+
+
+loss_s   <- get_loss_vector(cv_s)
+loss_gjr <- get_loss_vector(cv_gjr)
+loss_e   <- get_loss_vector(cv_e)
+
+
+loss_s   <- get_loss_vector(cv_s)
+loss_gjr <- get_loss_vector(cv_gjr)
+loss_e   <- get_loss_vector(cv_e)
+
+
+dm_s_vs_gjr <- dm.test(loss_s, loss_gjr, h = 1, alternative = "two.sided")
+dm_gjr_vs_e <- dm.test(loss_gjr, loss_e, h = 1, alternative = "two.sided")
+dm_s_vs_e   <- dm.test(loss_s, loss_e, h = 1, alternative = "two.sided")
+
+
+dm_summary <- data.frame(
+  Confronto = c("sGARCH vs GJR-GARCH", "GJR-GARCH vs eGARCH", "sGARCH vs eGARCH"),
+  Statistica_DM = c(dm_s_vs_gjr$statistic, dm_gjr_vs_e$statistic, dm_s_vs_e$statistic),
+  P_Value = c(dm_s_vs_gjr$p.value, dm_gjr_vs_e$p.value, dm_s_vs_e$p.value)
+)
+
+print(dm_summary)
+```
+```{r}
+
+spec_sgarch_fit <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std" 
+)
+
+
+fit_sgarch <- ugarchfit(spec = spec_sgarch_fit, data = train_data)
+
+cat("\n--- RISULTATI DEL MODELLO sGARCH FITTATO ---\n")
+print(fit_sgarch@fit$matcoef) # Mostra i parametri stimati (mu, omega, alpha, beta, shape)
+
+
+fit_returns <- as.numeric(fitted(fit_sgarch))
+
+
+fit_returns <- na.omit(fit_returns)
+sim_returns <- na.omit(sim_returns)
+
+
+ks_test <- ks.test(sim_returns, fit_returns)
+
+
+library(tseries)
+library(moments)
+
+confronto_momenti <- data.frame(
+  Statistica = c("Media", "Dev.Standard", "Skewness", "Kurtosis"),
+  Simulato = c(mean(sim_returns), sd(sim_returns), skewness(sim_returns), kurtosis(sim_returns)),
+  Fittato = c(mean(fit_returns), sd(fit_returns), skewness(fit_returns), kurtosis(fit_returns))
+)
+
+print("--- Test di Kolmogorov-Smirnov ---")
+print(ks_test)
+
+print("--- Confronto Momenti Statistici ---")
+print(confronto_momenti)
+```
+```{r}
+
+spec_sgarch_fit <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std" 
+)
+
+fit_sgarch <- ugarchfit(spec = spec_sgarch_fit, data = train_data)
+
+
+vol_fit <- as.numeric(sigma(fit_sgarch))
+vol_sim <- as.numeric(sigma(sim)) 
+
+
+vol_fit <- vol_fit[!is.na(vol_fit)]
+vol_sim <- vol_sim[!is.na(vol_sim)]
+
+
+ks_test_vol <- ks.test(vol_sim, vol_fit)
+
+
+library(moments)
+
+confronto_volatilta <- data.frame(
+  Statistica    = c("Media Vol", "Dev.Std Vol", "Skewness Vol", "Kurtosis Vol"),
+  Simulata_Sim  = c(mean(vol_sim), sd(vol_sim), skewness(vol_sim), kurtosis(vol_sim)),
+  Fittata_Data  = c(mean(vol_fit), sd(vol_fit), skewness(vol_fit), kurtosis(vol_fit))
+)
+
+
+cat("\n--- TEST DI KOLMOGOROV-SMIRNOV (DISTRIBUZIONE VOLATILITÀ) ---\n")
+print(ks_test_vol)
+
+cat("\n--- CONFRONTO MOMENTI STATISTICI DELLA VOLATILITÀ ---\n")
+print(confronto_volatilta)
+
+
+plot(density(vol_fit), col = "blue", main = "Confronto Densità Volatilità", lwd = 2)
+lines(density(vol_sim), col = "red", lty = 2, lwd = 2)
+legend("topright", legend = c("Fittata", "Simulata"), col = c("blue", "red"), lty = 1:2)
+
+```
+```{r}
+
+spec_gjr_fit <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std" 
+)
+fit_gjr <- ugarchfit(spec = spec_gjr_fit, data = train_data)
+
+
+vol_gjr_fit  <- as.numeric(sigma(fit_gjr))
+vol_gjr_sim  <- as.numeric(sigma(sim_gjr)) 
+
+
+vol_gjr_fit <- vol_gjr_fit[!is.na(vol_gjr_fit)]
+vol_gjr_sim <- vol_gjr_sim[!is.na(vol_gjr_sim)]
+
+
+ks_gjr <- ks.test(vol_gjr_sim, vol_gjr_fit)
+
+confronto_gjr <- data.frame(
+  Statistica    = c("Media Vol", "Dev.Std Vol", "Skewness Vol", "Kurtosis Vol"),
+  Simulata_GJR  = c(mean(vol_gjr_sim), sd(vol_gjr_sim), skewness(vol_gjr_sim), kurtosis(vol_gjr_sim)),
+  Fittata_GJR   = c(mean(vol_gjr_fit), sd(vol_gjr_fit), skewness(vol_gjr_fit), kurtosis(vol_gjr_fit))
+)
+
+print("--- RISULTATI GJR-GARCH: SIM vs FIT ---")
+print(ks_gjr)
+print(confronto_gjr)
+```
+```{r}
+
+spec_egarch_fit <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std" 
+)
+fit_egarch <- ugarchfit(spec = spec_egarch_fit, data = train_data)
+
+
+vol_e_fit  <- as.numeric(sigma(fit_egarch))
+vol_e_sim  <- as.numeric(sigma(sim_egarch)) 
+
+
+vol_e_fit <- vol_e_fit[!is.na(vol_e_fit)]
+vol_e_sim <- vol_e_sim[!is.na(vol_e_sim)]
+
+I
+ks_e <- ks.test(vol_e_sim, vol_e_fit)
+
+confronto_egarch <- data.frame(
+  Statistica    = c("Media Vol", "Dev.Std Vol", "Skewness Vol", "Kurtosis Vol"),
+  Simulata_e    = c(mean(vol_e_sim), sd(vol_e_sim), skewness(vol_e_sim), kurtosis(vol_e_sim)),
+  Fittata_e     = c(mean(vol_e_fit), sd(vol_e_fit), skewness(vol_e_fit), kurtosis(vol_e_fit))
+)
+
+print("--- RISULTATI eGARCH: SIM vs FIT ---")
+print(ks_e)
+print(confronto_egarch)
+```
+
+lo uso per scegliere il modello migliore, l'egrarch è l'unico stabile , devo normalizzare gli mse
+```{r}
+
+library(rugarch)
+
+
+
+spec_egarch <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE),
+  distribution.model = "std" 
+)
+
+
+fit_egarch <- ugarchfit(spec = spec_egarch, data = train_data)
+
+
+cat("\n--- RISULTATI DEL MODELLO EGARCH (TRAIN SET) ---\n")
+print(fit_egarch)
+
+
+```
+
+```{r}
+
+spec_e_final <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE), 
+  distribution.model = "std" 
+)
+fit_e_train_full <- ugarchfit(spec = spec_e_final, data = train_data)
+
+print("Parametri  dell'eGARCH fittati sul Train:")
+print(coef(fit_e_train_full))
+```
+parametri e garch train
+```{r}
+
+spec_e_final <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE), 
+  distribution.model = "std"
+)
+
+
+final_roll <- ugarchroll(
+  spec_e_final, 
+  data = real_returns, 
+  n.start = n_train,        
+  refit.window = "moving",  
+  refit.every = 20,         
+  calculate.VaR = FALSE
+)
+
+
+res_test <- as.data.frame(final_roll)
+
+
+mse_final_test <- mean((res_test$Realized^2 - res_test$Sigma^2)^2)
+
+
+cat("MSE Finale sul Test Set (Rolling):", mse_final_test)
+
+```
+mse del test 
+```{r}
+
+last_coef_block <- final_roll@model$coef[[length(final_roll@model$coef)]]
+
+
+last_estimates <- last_coef_block$coef[, " Estimate"]
+
+
+last_pars <- as.list(last_estimates)
+
+
+print(last_pars)
+names(last_pars)
+```
+```{r}
+
+spec_sim <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
+  mean.model = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std",
+  fixed.pars = last_pars
+)
+
+set.seed(42)
+
+sim_mc <- ugarchpath(
+  spec_sim,
+  n.sim = 20,
+  m.sim = 10000,
+  presigma   = as.numeric(tail(res_test$Sigma,1)),
+  prereturns = as.numeric(tail(res_test$Realized,1))
+)
+
+sim_ret <- fitted(sim_mc)
+sim_sig <- sigma(sim_mc)
+
+cat("Simulazione completata:",
+    dim(sim_sig)[1], "giorni x",
+    dim(sim_sig)[2], "sentieri\n")
+```
+simulazione mc basata su ultimi parametri rolling test
+```{r}
+
+vol_forecast <- data.frame(
+  Giorno = 1:20,
+  Vol_Media = apply(sim_sig, 1, mean),
+  Vol_Min   = apply(sim_sig, 1, min),
+  Vol_Max   = apply(sim_sig, 1, max),
+  Lower_95  = apply(sim_sig, 1, quantile, probs = 0.025),
+  Upper_95  = apply(sim_sig, 1, quantile, probs = 0.975)
+)
+
+
+print(vol_forecast)
+```
+```{r}
+
+res_test <- as.data.frame(final_roll)
+
+
+head(res_test)
+
+ultimi_giorni_test <- tail(res_test, 20)
+print(ultimi_giorni_test$Sigma)
+```
+
+```{r}
+
+cat("Ultimo prezzo reale nel dataset:", as.numeric(tail(price, 1)), "\n")
+
+
+
+
+
+cat("Ultima Sigma stimata (rolling):", as.numeric(tail(res_test$Sigma, 1)), "\n")
+
+
+cat("Volatilità media prevista (Monte Carlo):\n")
+print(head(vol_forecast$Vol_Media, 3))
+```
+
+```{r}
+
+last_price_val <- as.numeric(tail(price, 1))
+
+
+sim_prices <- last_price_val * apply(sim_ret, 2, function(x) exp(cumsum(x)))
+
+
+cat("Dimensioni sim_prices:", dim(sim_prices)[1], "x", dim(sim_prices)[2], "\n")
+
+```
+
+```{r}
+
+forecast_summary <- data.frame(
+  Giorno = 1:20,
+  Mediana = apply(sim_prices, 1, median),
+  Lower_95 = apply(sim_prices, 1, quantile, probs = 0.025),
+  Upper_95 = apply(sim_prices, 1, quantile, probs = 0.975),
+  Lower_80 = apply(sim_prices, 1, quantile, probs = 0.10),
+  Upper_80 = apply(sim_prices, 1, quantile, probs = 0.90)
+)
+
+
+print(head(forecast_summary))
+```
+```{r}
+library(ggplot2)
+library(scales)
+
+
+ggplot(forecast_summary, aes(x = Giorno)) +
+ 
+  geom_ribbon(aes(ymin = Lower_95, ymax = Upper_95, fill = "95% Confidence"), alpha = 0.2) +
+  
+  geom_ribbon(aes(ymin = Lower_80, ymax = Upper_80, fill = "80% Confidence"), alpha = 0.4) +
+ 
+  geom_line(aes(y = Mediana, color = "Mediana (eGARCH)"), size = 1.2) +
+  
+  scale_fill_manual(name = "Intervalli di Probabilità", 
+                    values = c("95% Confidence" = "steelblue", "80% Confidence" = "steelblue")) +
+  scale_color_manual(name = "", values = c("Mediana (eGARCH)" = "darkblue")) +
+  
+  scale_y_continuous(labels = dollar_format(prefix = "€ ")) 
+  labs(title = "Proiezione Monte Carlo: Evoluzione del Prezzo EUR/USD",
+       subtitle = "Simulazione a 20 giorni basata su modello eGARCH (10.000 sentieri)",
+       x = "Giorni dall'ultima osservazione",
+       y = "Prezzo Previsto",
+       caption = "Fonte: Elaborazione su dati storici tramite modello eGARCH + Monte Carlo") +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        plot.title = element_text(face = "bold", size = 14),
+        panel.grid.minor = element_blank())
+```
+plot IC montecarlo
+
+```{r}
+
+library(readr)
+library(dplyr)
+library(lubridate)
+
+
+dataset <- read_csv("SummaryAndNews.csv", show_col_types = FALSE)
+
+
+dataset$Date_dt <- as.Date(as.character(dataset$Date), format = "%Y-%m-%d")
+
+
+news_split_sentiment <- dataset %>%
+  
+  filter(!is.na(Date_dt), Date_dt >= as.Date("2020-01-01"), !is.na(economics_finance)) %>%
+  
+  
+  mutate(
+    economics_finance = gsub('"', '', economics_finance),
+    economics_finance = gsub('[\r\n\t]', ' ', economics_finance)
+  ) %>%
+  
+  
+  mutate(
+    is_euro = grepl("EUR|BCE|ECB|Lagarde|Eurozone|Germany|France|Italy|European Central Bank", 
+                    economics_finance, ignore.case = TRUE),
+    is_usa  = grepl("Dollar|USD|FED|Federal Reserve|Powell|Treasury|United States|USA", 
+                    economics_finance, ignore.case = TRUE)
+  ) %>%
+  
+  
+  filter(is_euro | is_usa) %>%
+  
+ 
+  distinct(economics_finance, .keep_all = TRUE) %>%
+  
+  
+  mutate(testo_per_ai = economics_finance) %>%
+  select(Date_dt, economics_finance, testo_per_ai, is_euro, is_usa) %>%
+  arrange(Date_dt)
+
+
+cat("\n--- REPORT FINALE ANALISI NEWS ---\n")
+total_news <- nrow(news_split_sentiment)
+solo_euro  <- sum(news_split_sentiment$is_euro & !news_split_sentiment$is_usa)
+solo_usa   <- sum(news_split_sentiment$is_usa & !news_split_sentiment$is_euro)
+entrambe   <- sum(news_split_sentiment$is_euro & news_split_sentiment$is_usa)
+
+print(paste("News totali trovate:", total_news))
+print(paste("News riferite SOLO all'Euro:", solo_euro))
+print(paste("News riferite SOLO al Dollaro (USA):", solo_usa))
+print(paste("News che citano ENTRAMBI (Correlazione):", entrambe))
+print(paste("Data inizio:", min(news_split_sentiment$Date_dt)))
+print(paste("Data fine:", max(news_split_sentiment$Date_dt)))
+
+
+write.csv(news_split_sentiment, "news_per_sentiment_split.csv", row.names = FALSE, quote = TRUE)
+
+cat("\nFile 'news_per_sentiment_split.csv' generato con successo e pulito per Python!\n")
+```
+```{r}
+head(dataset$Date)
+```
+
+```{r}
+
+cat("\n--- ESEMPIO DELLE PRIME 5 NEWS FILTRATE ---\n")
+news_split_sentiment %>%
+  select(Date_dt, is_euro, is_usa, economics_finance) %>%
+  head(5) %>%
+  print()
+
+cat("\n--- ESEMPIO DELLE ULTIME 5 NEWS (2025) ---\n")
+news_split_sentiment %>%
+  select(Date_dt, is_euro, is_usa, economics_finance) %>%
+  tail(5) %>%
+  print()
+```
+```{r}
+colnames(dataset)
+```
+
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(zoo)
+
+
+dati_prezzi_vol <- res_test %>%
+ mutate(Date = as.Date(rownames(res_test))) %>%
+
+left_join(data.frame(Date = as.Date(index(price)), Prezzo = as.numeric(price)), by = "Date") %>%
+select(Date, Prezzo, Sigma, Realized)
+
+head(dati_prezzi_vol)
+tail(dati_prezzi_vol) 
+```
+
+```{r}
+
+```
+```{r}
+library(dplyr)
+library(tidyr)
+library(zoo)
+library(lubridate)
+
+
+data_inizio_limite <- as.Date("2022-10-17")
+data_fine_limite   <- as.Date("2025-04-16")
+
+
+giorni_aperti <- dati_prezzi_vol %>%
+  mutate(Date = as.Date(as.character(Date))) %>%
+  filter(Date >= data_inizio_limite & Date <= data_fine_limite) %>%
+  pull(Date) %>%
+  unique() %>%
+  sort()
+
+
+trova_prossimo_aperto <- function(data_notizia, lista_aperti) {
+  
+  if (data_notizia %in% lista_aperti) {
+    return(data_notizia)
+  }
+  
+  prossimo <- lista_aperti[lista_aperti > data_notizia][1]
+  return(prossimo)
+}
+
+
+df_sentiment <- read.csv('news_con_sentiment_split_finale1.csv')
+
+daily_sent_fixed <- df_sentiment %>%
+  mutate(Date_dt = as.Date(as.character(Date_dt))) %>%
+  
+  filter(Date_dt >= (data_inizio_limite - 3) & Date_dt <= data_fine_limite) %>%
+  
+  
+  rowwise() %>%
+  mutate(Date_for_join = trova_prossimo_aperto(Date_dt, giorni_aperti)) %>%
+  ungroup() %>%
+  
+  
+  group_by(Date_for_join) %>%
+  summarise(
+    sent_EUR = mean(sentiment_score[as.logical(is_euro) == TRUE], na.rm = TRUE),
+    sent_USD = mean(sentiment_score[as.logical(is_usa) == TRUE], na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    sent_EUR = ifelse(is.nan(sent_EUR), NA, sent_EUR),
+    sent_USD = ifelse(is.nan(sent_USD), NA, sent_USD)
+  )
+
+
+dataset_final_bilstm <- dati_prezzi_vol %>%
+  mutate(Date = as.Date(as.character(Date))) %>%
+  filter(Date >= data_inizio_limite & Date <= data_fine_limite) %>%
+  
+  
+  left_join(daily_sent_fixed, by = c("Date" = "Date_for_join")) %>%
+  
+  
+  mutate(
+    sent_EUR = replace_na(sent_EUR, 0),
+    sent_USD = replace_na(sent_USD, 0)
+  ) %>%
+  
+  arrange(Date) %>%
+  
+  
+  mutate(Log_Return = log(Prezzo / lag(Prezzo))) %>%
+  mutate(Target = ifelse(lead(Log_Return) > 0, 1, 0)) %>%
+  
+  
+  filter(!is.na(Log_Return) & !is.na(Target)) %>%
+  filter(Log_Return != 0)
+
+
+cat("\n--- REPORT DATASET UNIFICATO (WEEKEND & FESTIVI GESTITI) ---")
+cat("\nRange temporale reale:", as.character(min(dataset_final_bilstm$Date)), "fino a", as.character(max(dataset_final_bilstm$Date)))
+cat("\nRighe totali (Giorni di Trading):", nrow(dataset_final_bilstm))
+cat("\nDistribuzione Target:\n")
+print(table(dataset_final_bilstm$Target))
+
+
+write.csv(dataset_final_bilstm, "input_per_bilstm_final1.csv", row.names = FALSE)
+```
+```{r}
+range(daily_sent_fixed$Date_for_join)
+
+range(as.Date(dati_prezzi_vol$Date))
+```
+
+```{r}
+
+print("--- PRIME RIGHE (HEAD) ---")
+head(dataset_final_bilstm, 10)
+
+
+print("--- ULTIME RIGHE (TAIL) ---")
+tail(dataset_final_bilstm, 10)
+```
+```{r}
+
+test_data_row <- dataset_final_bilstm %>% 
+  filter(sent_EUR != 0) %>% 
+  slice(1)
+
+data_da_controllare <- test_data_row$Date
+valore_nel_dataset_unito <- test_data_row$sent_EUR
+
+
+media_originale_fix <- df_sentiment %>% 
+  filter(as.Date(Date_dt) == data_da_controllare) %>%
+  
+  mutate(is_euro_logico = as.logical(is_euro)) %>% 
+  filter(is_euro_logico == TRUE) %>% 
+  summarise(media = mean(sentiment_score, na.rm = TRUE)) %>% 
+  pull(media)
+
+
+cat("Data:", as.character(data_da_controllare), "\n")
+cat("Valore nel dataset Bi-LSTM:", valore_nel_dataset_unito, "\n")
+cat("Media ricalcolata dai grezzi:", media_originale_fix, "\n")
+
+if(abs(valore_nel_dataset_unito - media_originale_fix) < 0.00001) {
+  cat("\nPERFETTO: I numeri coincidono al millesimo!")
+} else {
+  cat("\nC'è ancora una piccola differenza, ma i dati sono presenti.")
+}
+```
+```{r}
+# Estrae i valori di sentiment calcolati per il 15 Aprile
+sentiment_15 <- daily_sent_fixed %>% 
+  filter(Date_for_join == as.Date("2025-04-15"))
+
+print(sentiment_15)
+```
+```{r}
+
+```
+
+
+test set con rolling che parte dai parametri del train
+
+ 6 Forecast della volatilità
+
+previsione out-of-sample
+
+ 
+
+
+
+STEP 7 – Monte Carlo
+
+simulazione returns
+
+
+
+
+Log-Returns
+https://id.scribd.com/document/325280704/Chapter-1-Introductory-Econometrics-for-Finance
+
+Proprietà statistiche per giustificare GARCH
+
+
+
+GARCH(1,1)
+
+Estensione modelli(EGARCH, GJR-GARCH ecc)
+
+Confronto modelli
+
+
+
+
+Previsione volatilità
+
+Valutazione previsione?
+
+
+
+
+
+
+
+collegamento volatilità prezzo
+
+Simulazione monte carlo
+
+IC e distribuzione prezzi futuri
+
+
+
+test mariano e test corrispodenza distribuzioni tra train e simulato
+
+
+
+
+fare grafico volatilita
+guardare parte train/test
+guardre se esiste un test migliore per vedere appartenenza modelli a eur/usd
