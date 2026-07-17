@@ -6,7 +6,7 @@ La metodologia ibrida prevede:
 Analisi della Volatilità: Utilizzo di modelli GARCH per stimare la varianza condizionata.
 
 
-Direzionalità del Prezzo: Implementazione di un modello di Deep Learning che combina FinBERT (per l'estrazione del sentiment da news finanziarie) e BiLSTM (per catturare le dipendenze temporali nelle serie storiche).
+Direzionalità del Prezzo: Implementazione di un modello di Deep Learning che combina FinBERT (per l'estrazione del sentiment da news finanziarie) e LSTM (per catturare le dipendenze temporali nelle serie storiche).
 
 
-Simulazione: Utilizzo di simulazioni Monte Carlo per generare scenari probabilistici dei rendimenti.
+Utilizzo di simulazioni Monte Carlo per generare scenari probabilistici dei rendimenti.
