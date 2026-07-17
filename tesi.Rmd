@@ -103,79 +103,148 @@ head(real_returns)
 
 ```
 ```{r}
-
-```
-
- 3  Analisi esplorativa
-
-grafico prezzi
-
-grafico returns
-
-statistiche descrittive
- confrontare forex standardizzato e distribuzioni standardizzate
-
-assenza di autocorrelazione nei returns
-
-clustering della volatilità
-
-code pesanti
-dataset simulato garch 1.1
-```{r}
 library(rugarch)
 library(FinTS)
 
-
-spec_sim <- ugarchspec(
+spec_fit <- ugarchspec(
   variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
-  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
-  distribution.model = "std"  )
-
-
-setfixed(spec_sim) <- list(
-  mu     = 0,
-  omega  = 0.000001,  
-  alpha1 = 0.06,    
-  beta1  = 0.92,
-  shape  = 8
-)
-
-
-set.seed(123)
-n <- 3500  
-sim <- ugarchpath(spec_sim, n.sim = n)
-
-
-sim_returns <- as.numeric(fitted(sim))
-
-
-
-any(is.na(sim_returns))
-sum(is.na(sim_returns))  
-
-
-
-
-
-```
-```{r}
-
-spec_gjr <- ugarchspec(
-  variance.model = list(model = "gjrGARCH", garchOrder = c(1,1)),
   mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
   distribution.model = "std"
 )
 
 
-setfixed(spec_gjr) <- list(mu=0, omega=1e-6, alpha1=0.03, beta1=0.90, gamma1=0.07, shape=8)
+fit <- ugarchfit(spec = spec_fit, data = real_returns)
 
+
+params <- coef(fit)
+print(params) 
+```
+```{r}
+library(rugarch)
+library(FinTS)
+
+# 1. Definizione della specifica e fit (i tuoi codici originali)
+spec_fit <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+fit <- ugarchfit(spec = spec_fit, data = real_returns)
+
+# 2. Preparazione per la simulazione Monte Carlo
+params <- coef(fit)
+spec_sim_real <- spec_fit
+setfixed(spec_sim_real) <- as.list(params)
+
+# 3. Simulazione Monte Carlo (10.000 percorsi)
+# m.sim = 10000 genera una matrice di simulazioni
 set.seed(123)
-sim_gjr <- ugarchpath(spec_gjr, n.sim = 3500)
-returns_gjr <- as.numeric(fitted(sim_gjr))
+sim_real <- ugarchpath(spec_sim_real, n.sim = length(real_returns), m.sim = 1000)
+
+# 4. Estrazione delle serie simulate
+# sim_returns_real diventa una matrice (righe = osservazioni, colonne = simulazioni)
+sim_returns_real <- sim_real@path$seriesSim
+
+# 5. Verifica: calcolo media delle medie delle 10.000 simulazioni
+# Questo ti serve per confrontare se la tua simulazione singola è rappresentativa
+medie_simulate <- colMeans(sim_returns_real)
+media_finale <- mean(medie_simulate)
+
+print(paste("Media delle medie simulate:", media_finale))
+```
+```{r}
+library(moments)
+
+# Assumendo che 'sim_returns_real' sia la matrice (n_obs x 1.000) 
+# generata precedentemente per il GARCH
+
+# 1. Calcolo Media delle medie simulate
+vettore_medie_garch <- colMeans(sim_returns_real)
+media_finale        <- mean(vettore_medie_garch)
+
+# 2. Calcolo Deviazione Standard, Curtosi e Asimmetria
+vettore_sd_garch       <- apply(sim_returns_real, 2, sd)
+vettore_kurtosi        <- apply(sim_returns_real, 2, kurtosis)
+vettore_skewness       <- apply(sim_returns_real, 2, skewness)
+
+# 3. Calcolo delle medie finali
+media_sd_garch       <- mean(vettore_sd_garch)
+media_kurtosi        <- mean(vettore_kurtosi)
+media_skewness       <- mean(vettore_skewness)
+
+# 4. Stampa dei risultati
+cat("--- Risultati Medi GARCH (Libreria Moments) ---\n")
+cat("Media dei rendimenti:     ", media_finale, "\n")
+cat("Deviazione Standard media:", media_sd_garch, "\n")
+cat("Curtosi media:            ", media_kurtosi, "\n")
+cat("Asimmetria media:         ", media_skewness, "\n")
+```
+
+
+```{r}
+
+
+```
+```{r}
+# 1. Prepariamo i dati reali (puliti da eventuali NA)
+real_vec <- as.numeric(real_returns)
+real_vec <- real_vec[!is.na(real_vec)]
+
+# 2. Creiamo un vettore per salvare i p-value
+p_values <- numeric(ncol(sim_returns_real))
+
+# 3. Eseguiamo il test KS con suppressWarnings per pulire l'output
+for(i in 1:ncol(sim_returns_real)) {
+  sim_vec <- as.numeric(sim_returns_real[, i])
+  sim_vec <- sim_vec[!is.na(sim_vec)]
+  
+  # suppressionWarnings impedisce la stampa di avvisi (es. "cannot compute exact p-value with ties")
+  p_values[i] <- suppressWarnings(ks.test(real_vec, sim_vec)$p.value)
+}
+
+# 4. Analisi dei risultati (calcolata in silenzio)
+successi <- sum(p_values > 0.05)
+percentuale_successo <- (successi / length(p_values)) * 100
+
+# 5. Output pulito
+cat("--- Risultati Test KS su 1.000 Simulazioni ---\n")
+cat("Percentuale di volte in cui l'ipotesi di uguaglianza NON viene rifiutata:", round(percentuale_successo, 2), "%\n")
+cat("Media dei p-value:", round(mean(p_values), 4), "\n")
 ```
 
 ```{r}
 
+spec_sim_real <- spec_fit
+setfixed(spec_sim_real) <- as.list(params)
+
+
+set.seed(123)
+sim_real <- ugarchpath(spec_sim_real, n.sim = length(real_returns))
+
+
+sim_returns_real <- as.numeric(sim_real@path$seriesSim)
+
+```
+
+```{r}
+
+real_vec <- as.numeric(real_returns)
+
+
+sim_vec <- as.numeric(sim_returns_real)
+
+
+real_vec <- real_vec[!is.na(real_vec)]
+sim_vec <- sim_vec[!is.na(sim_vec)]
+
+
+ks_test_result <- ks.test(real_vec, sim_vec)
+
+
+print(ks_test_result)
+```
+```{r}
 spec_egarch <- ugarchspec(
   variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
   mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
@@ -183,29 +252,507 @@ spec_egarch <- ugarchspec(
 )
 
 
+fit_egarch <- ugarchfit(spec = spec_egarch, data = real_returns)
+```
 
-setfixed(spec_egarch) <- list(mu=0, omega=-0.5, alpha1=0.01, beta1=0.98, gamma1=0.05, shape=8)
+
+```{r}
+params_egarch <- coef(fit_egarch)
+print(params_egarch) 
+
+```
+
+```{r}
+library(rugarch)
+
+# 1. Definizione della specifica e fit
+spec_egarch <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+fit_egarch <- ugarchfit(spec = spec_egarch, data = real_returns)
+
+# 2. Preparazione per la simulazione Monte Carlo (1.000 iterazioni)
+params_egarch <- coef(fit_egarch)
+spec_sim_egarch <- spec_egarch
+setfixed(spec_sim_egarch) <- as.list(params_egarch)
 
 set.seed(123)
-sim_egarch <- ugarchpath(spec_egarch, n.sim = 3500)
-returns_egarch <- as.numeric(fitted(sim_egarch))
+n_obs <- length(as.numeric(real_returns))
+
+# Eseguiamo 1.000 simulazioni
+sim_egarch <- ugarchpath(spec_sim_egarch, n.sim = n_obs, m.sim = 1000)
+
+# 3. Estrazione della matrice delle serie simulate
+sim_returns_egarch <- sim_egarch@path$seriesSim
+
+# 4. Validazione con Test KS (1.000 iterazioni)
+real_vec <- as.numeric(real_returns)
+real_vec <- real_vec[!is.na(real_vec)]
+
+p_values_egarch <- numeric(1000)
+
+for(i in 1:1000) {
+  sim_vec_egarch <- as.numeric(sim_returns_egarch[, i])
+  sim_vec_egarch <- sim_vec_egarch[!is.na(sim_vec_egarch)]
+  
+  p_values_egarch[i] <- suppressWarnings(ks.test(real_vec, sim_vec_egarch)$p.value)
+}
+
+# 5. Output dei risultati
+percentuale_successo <- (sum(p_values_egarch > 0.05) / 1000) * 100
+
+cat("--- Risultati Test KS EGARCH su 1.000 Simulazioni ---\n")
+cat("Percentuale di volte in cui l'ipotesi di uguaglianza NON viene rifiutata:", round(percentuale_successo, 2), "%\n")
+cat("Media dei p-value:", round(mean(p_values_egarch), 4), "\n")
+```
+```{r}
+library(moments)
+
+# Assumendo che 'sim_returns_egarch' sia la matrice (n_obs x 1000) 
+# generata precedentemente dal tuo modello EGARCH
+
+# 1. Calcolo di media, deviazione standard, curtosi e asimmetria per ogni colonna
+vettore_medie_egarch    <- apply(sim_returns_egarch, 2, mean)
+vettore_sd_egarch       <- apply(sim_returns_egarch, 2, sd)
+vettore_kurtosi_egarch  <- apply(sim_returns_egarch, 2, kurtosis)
+vettore_skewness_egarch <- apply(sim_returns_egarch, 2, skewness)
+
+# 2. Calcolo delle medie finali
+media_totale_egarch   <- mean(vettore_medie_egarch)
+media_sd_egarch       <- mean(vettore_sd_egarch)
+media_kurtosi_egarch  <- mean(vettore_kurtosi_egarch)
+media_skewness_egarch <- mean(vettore_skewness_egarch)
+
+# 3. Output completo
+cat("--- Risultati Analisi EGARCH (1.000 Sim) ---\n")
+cat("Media dei rendimenti:     ", media_totale_egarch, "\n")
+cat("Deviazione Standard media:", media_sd_egarch, "\n")
+cat("Curtosi media:            ", round(media_kurtosi_egarch, 4), "\n")
+cat("Asimmetria media:         ", round(media_skewness_egarch, 4), "\n")
+```
+
+```{r}
+
+spec_sim_egarch <- spec_egarch
+setfixed(spec_sim_egarch) <- as.list(params_egarch)
+
+
+set.seed(123)
+n_obs <- length(as.numeric(real_returns))
+sim_egarch <- ugarchpath(spec_sim_egarch, n.sim = n_obs)
+
+
+sim_vec_egarch <- as.numeric(sim_egarch@path$seriesSim)
+real_vec <- as.numeric(real_returns)
+
+
+real_vec <- real_vec[!is.na(real_vec)]
+sim_vec_egarch <- sim_vec_egarch[!is.na(sim_vec_egarch)]
+```
+
+```{r}
+
+ks_egarch <- ks.test(real_vec, sim_vec_egarch)
+
+print(ks_egarch)
+```
+```{r}
+spec_gjr <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1,1)),
+  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+  distribution.model = "std"
+)
+
+
+fit_gjr <- ugarchfit(spec = spec_gjr, data = real_returns)
+
+
+params_gjr <- coef(fit_gjr)
+print("Parametri stimati GJR-GARCH:")
+print(params_gjr)
+
+
+spec_sim_gjr <- spec_gjr
+setfixed(spec_sim_gjr) <- as.list(params_gjr)
+
+
+set.seed(123) 
+n_obs <- length(as.numeric(real_returns))
+sim_gjr <- ugarchpath(spec_sim_gjr, n.sim = n_obs)
+
+
+sim_vec_gjr <- as.numeric(sim_gjr@path$seriesSim)
+real_vec <- as.numeric(real_returns)
+
+
+real_vec <- real_vec[!is.na(real_vec)]
+sim_vec_gjr <- sim_vec_gjr[!is.na(sim_vec_gjr)]
+```
+
+
+```{r}
+ks_gjr <- ks.test(real_vec, sim_vec_gjr)
+
+print("Risultato Test Kolmogorov-Smirnov per GJR-GARCH:")
+print(ks_gjr)
+
+```
+```{r}
+library(rugarch)
+library(moments)
+
+# 1. Preparazione simulazione Monte Carlo (1.000 iterazioni)
+spec_sim_gjr <- spec_gjr
+setfixed(spec_sim_gjr) <- as.list(params_gjr)
+
+set.seed(123) 
+n_obs <- length(as.numeric(real_returns))
+
+# Eseguiamo 1.000 simulazioni
+sim_gjr <- ugarchpath(spec_sim_gjr, n.sim = n_obs, m.sim = 1000)
+
+# Estraggo la matrice dei risultati
+sim_returns_gjr <- sim_gjr@path$seriesSim
+
+# 2. Calcolo Statistiche Descrittive Medie
+vettore_medie_gjr    <- colMeans(sim_returns_gjr)
+vettore_sd_gjr       <- apply(sim_returns_gjr, 2, sd)
+vettore_kurtosi_gjr  <- apply(sim_returns_gjr, 2, kurtosis)
+vettore_skewness_gjr <- apply(sim_returns_gjr, 2, skewness)
+
+media_finale   <- mean(vettore_medie_gjr)
+media_sd_gjr   <- mean(vettore_sd_gjr)
+media_kurtosi  <- mean(vettore_kurtosi_gjr)
+media_skewness <- mean(vettore_skewness_gjr)
+
+# 3. Test KS su 1.000 iterazioni
+real_vec <- as.numeric(real_returns)
+real_vec <- real_vec[!is.na(real_vec)]
+
+p_values_gjr <- numeric(1000)
+for(i in 1:1000) {
+  sim_vec_gjr <- as.numeric(sim_returns_gjr[, i])
+  sim_vec_gjr <- sim_vec_gjr[!is.na(sim_vec_gjr)]
+  p_values_gjr[i] <- suppressWarnings(ks.test(real_vec, sim_vec_gjr)$p.value)
+}
+
+percentuale_successo <- (sum(p_values_gjr > 0.05) / 1000) * 100
+
+# 4. Output completo
+cat("--- Risultati Analisi GJR-GARCH (1.000 Sim) ---\n")
+cat("Media dei rendimenti:     ", media_finale, "\n")
+cat("Deviazione Standard media:", media_sd_gjr, "\n")
+cat("Curtosi media:            ", round(media_kurtosi, 4), "\n")
+cat("Asimmetria media:         ", round(media_skewness, 4), "\n")
+cat("Percentuale successo KS:  ", round(percentuale_successo, 2), "%\n")
+cat("Media dei p-value KS:     ", round(mean(p_values_gjr), 4), "\n")
+```
+
+```{r}
+
+par(mfrow=c(1,1)) 
+
+
+plot(ecdf(real_vec), 
+     main="Confronto della Capacità di Simulazione dei Modelli GARCH",
+     xlab="Rendimenti", 
+     ylab="Probabilità Cumulata",
+     col="black", lwd=2)
+
+
+lines(ecdf(sim_vec), col="gray", lty=3)
+
+
+lines(ecdf(sim_vec_gjr), col="red", lty=2)
+
+
+lines(ecdf(sim_vec_egarch), col="blue", lwd=2)
+
+
+legend("bottomright", 
+       legend=c("Dati Reali EUR/USD", "sGARCH (p=0.03)", "GJR-GARCH (p=0.00)", "EGARCH (p=0.08)"),
+       col=c("black", "gray", "red", "blue"), 
+       lty=c(1, 3, 2, 1), 
+       lwd=c(2, 1, 1, 2),
+       cex=0.8)
+```
+
+```{r}
+
+# 1. Calcoliamo la media della ECDF per ogni modello (assumendo di avere sim_returns_garch, sim_returns_egarch, sim_returns_gjr)
+x_vals <- seq(min(real_vec), max(real_vec), length.out = 100)
+
+calc_mean_ecdf <- function(matrice) {
+  rowMeans(sapply(1:ncol(matrice), function(i) ecdf(matrice[,i])(x_vals)))
+}
+
+# Calcolo delle medie
+mean_ecdf_garch <- calc_mean_ecdf(sim_returns_real) # o la tua matrice GARCH
+mean_ecdf_egarch <- calc_mean_ecdf(sim_returns_egarch)
+mean_ecdf_gjr    <- calc_mean_ecdf(sim_returns_gjr)
+
+# 2. Plot Unico
+plot(ecdf(real_vec), main="Confronto Medie Monte Carlo", xlab="Rendimenti", ylab="Prob. Cumulata", 
+     col="black", lwd=3, verticals=TRUE, do.points=FALSE)
+
+lines(x_vals, mean_ecdf_garch, col="gray40", lwd=2, lty=2)
+lines(x_vals, mean_ecdf_egarch, col="blue", lwd=2, lty=2)
+lines(x_vals, mean_ecdf_gjr, col="red", lwd=2, lty=2)
+
+legend("bottomright", 
+       legend=c("Dati Reali", "GARCH (Media)", "EGARCH (Media)", "GJR-GARCH (Media)"),
+       col=c("black", "gray40", "blue", "red"),
+       lwd=c(3, 2, 2, 2), lty=c(1, 2, 2, 2), cex=0.8)
+
+
+
+
+```
+```{r}
+
+library(tseries)
+
+# Funzione per eseguire il test ADF su tutte le colonne di una matrice
+# Restituisce un vettore di p-values per ogni simulazione
+test_adf_simulazioni <- function(matrice) {
+  apply(matrice, 2, function(col) {
+    # Usiamo 'stationary' come alternativa per testare la radice unitaria
+    # Il p-value < 0.05 indica solitamente che la serie è stazionaria
+    tryCatch(adf.test(col, alternative = "stationary")$p.value, 
+             error = function(e) NA)
+  })
+}
+
+# 1. Calcolo dei p-values per ogni modello
+p_values_garch <- test_adf_simulazioni(sim_returns_real)
+p_values_egarch <- test_adf_simulazioni(sim_returns_egarch)
+p_values_gjr    <- test_adf_simulazioni(sim_returns_gjr)
+
+# 2. Analisi dei risultati: percentuale di serie stazionarie (p-value < 0.05)
+percentuale_stazionarieta <- data.frame(
+  Modello = c("GARCH", "EGARCH", "GJR-GARCH"),
+  Stazionarie_Percent = c(
+    mean(p_values_garch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_egarch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_gjr < 0.05, na.rm = TRUE) * 100
+  )
+)
+
+print(percentuale_stazionarieta)
+
+# 3. (Opzionale) Visualizzazione della distribuzione dei p-values
+boxplot(list(GARCH = p_values_garch, EGARCH = p_values_egarch, GJR = p_values_gjr),
+        main = "Distribuzione p-values Test ADF",
+        ylab = "p-value", col = c("gray40", "blue", "red"))
+abline(h = 0.05, col = "black", lty = 2) # Soglia di significatività
+```
+```{r}
+# 1. Calcolo delle medie dei p-value per i 3 modelli
+media_p_garch  <- mean(p_values_garch, na.rm = TRUE)
+media_p_egarch <- mean(p_values_egarch, na.rm = TRUE)
+media_p_gjr    <- mean(p_values_gjr, na.rm = TRUE)
+
+# 2. Creazione della tabella riassuntiva completa (Percentuale + Media P-Value)
+tabella_adf_finale <- data.frame(
+  Modello = c("GARCH", "EGARCH", "GJR-GARCH"),
+  Perc_Stazionarie = c(
+    mean(p_values_garch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_egarch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_gjr < 0.05, na.rm = TRUE) * 100
+  ),
+  Media_P_Value = c(media_p_garch, media_p_egarch, media_p_gjr)
+)
+
+print(tabella_adf_finale)
+
+# 3. Output testuale di confronto
+cat("\n--- Analisi Test ADF (1.000 simulazioni) ---\n")
+cat("Una media dei p-value molto bassa indica una forte evidenza di stazionarietà.\n")
+```
+
+```{r}
+library(FinTS)
+
+# Funzione per eseguire l'ARCH test su ogni colonna della matrice simulata
+# Usiamo lag=10 come da te richiesto
+esegui_arch_test_sim <- function(matrice, lag_val = 10) {
+  apply(matrice, 2, function(col) {
+    # Usiamo tryCatch per evitare che eventuali errori blocchino il ciclo
+    tryCatch(ArchTest(col, lags = lag_val)$p.value, 
+             error = function(e) NA)
+  })
+}
+
+# 1. Calcolo dei p-values per ogni modello (1000 simulazioni ciascuno)
+p_values_arch_garch <- esegui_arch_test_sim(sim_returns_real, lag_val = 10)
+p_values_arch_egarch <- esegui_arch_test_sim(sim_returns_egarch, lag_val = 10)
+p_values_arch_gjr    <- esegui_arch_test_sim(sim_returns_gjr, lag_val = 10)
+
+# 2. Sintesi dei risultati
+# Vogliamo vedere quanti p-value sono < 0.05 (cioè presenza di effetti ARCH confermata)
+tabella_arch_test <- data.frame(
+  Modello = c("GARCH", "EGARCH", "GJR-GARCH"),
+  Perc_Effetto_ARCH_Presente = c(
+    mean(p_values_arch_garch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_arch_egarch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_arch_gjr < 0.05, na.rm = TRUE) * 100
+  )
+)
+
+print(tabella_arch_test)
+
+# 3. Confronto con il valore reale (per il grafico/commento)
+p_val_reale <- ArchTest(real_vec, lags = 10)$p.value
+cat("P-value ARCH test sui Dati Reali:", p_val_reale, "\n")
+
+```
+```{r}
+# 1. Calcolo delle medie dei p-value per i 3 modelli
+media_p_garch  <- mean(p_values_arch_garch, na.rm = TRUE)
+media_p_egarch <- mean(p_values_arch_egarch, na.rm = TRUE)
+media_p_gjr    <- mean(p_values_arch_gjr, na.rm = TRUE)
+
+# 2. Creazione della tabella riassuntiva completa
+tabella_finale <- data.frame(
+  Modello = c("GARCH", "EGARCH", "GJR-GARCH"),
+  Perc_Successo_ARCH = c(
+    mean(p_values_arch_garch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_arch_egarch < 0.05, na.rm = TRUE) * 100,
+    mean(p_values_arch_gjr < 0.05, na.rm = TRUE) * 100
+  ),
+  Media_P_Value = c(media_p_garch, media_p_egarch, media_p_gjr)
+)
+
+print(tabella_finale)
+
+# 3. Output testuale di confronto con i Dati Reali
+p_val_reale <- ArchTest(real_vec, lags = 10)$p.value
+cat("\n--- Confronto con Dati Reali ---\n")
+cat("P-value ARCH test Dati Reali: ", p_val_reale, "\n")
+```
+```{r}
+library(magrittr)
+
+# --- 1. Funzione per il calcolo della media ACF ---
+calc_mean_acf <- function(matrice, lag_max = 20) {
+  apply(matrice, 2, function(col) acf(col, lag.max = lag_max, plot = FALSE)$acf[-1]) %>% 
+    rowMeans()
+}
+
+# --- 2. Calcoli Preliminari ---
+n <- length(real_vec)
+conf <- qnorm(0.975)/sqrt(n)
+
+# Medie ACF Rendimenti
+mean_acf_garch  <- calc_mean_acf(sim_returns_real)
+mean_acf_egarch <- calc_mean_acf(sim_returns_egarch)
+mean_acf_gjr    <- calc_mean_acf(sim_returns_gjr)
+real_acf        <- acf(real_vec, lag.max = 20, plot = FALSE)$acf[-1]
+
+# Medie ACF Rendimenti al Quadrato
+mean_acf_garch_sq  <- calc_mean_acf(sim_returns_real^2)
+mean_acf_egarch_sq <- calc_mean_acf(sim_returns_egarch^2)
+mean_acf_gjr_sq    <- calc_mean_acf(sim_returns_gjr^2)
+real_acf_sq        <- acf(real_vec^2, lag.max = 20, plot = FALSE)$acf[-1]
+
+# --- 3. Funzione per il grafico ACF "Clean" ---
+plot_acf_clean <- function(vals, title, ylim_val) {
+  plot(1:20, vals, type="h", lwd=3, col="black", ylim=ylim_val, 
+       main=title, xlab="Lag", ylab="Autocorrelazione", frame.plot=FALSE)
+  abline(h = conf, col="blue", lty=2)
+  abline(h = -conf, col="blue", lty=2)
+  abline(h = 0, col="black")
+}
+
+# --- 4. Generazione Grafici ---
+
+# A) Rendimenti (stessa scala)
+par(mfrow=c(2,2))
+ylim_r <- c(min(c(real_acf, mean_acf_garch, mean_acf_egarch, mean_acf_gjr), -0.2), 0.2)
+plot_acf_clean(real_acf, "Dati Reali (Rendimenti)", ylim_r)
+plot_acf_clean(mean_acf_garch, "GARCH (Media 1000 Sim)", ylim_r)
+plot_acf_clean(mean_acf_egarch, "EGARCH (Media 1000 Sim)", ylim_r)
+plot_acf_clean(mean_acf_gjr, "GJR-GARCH (Media 1000 Sim)", ylim_r)
+
+# B) Rendimenti al Quadrato (stessa scala)
+par(mfrow=c(2,2))
+ylim_sq <- c(0, max(c(real_acf_sq, mean_acf_garch_sq, mean_acf_egarch_sq, mean_acf_gjr_sq)))
+plot_acf_clean(real_acf_sq, "Dati Reali (Rendimenti^2)", ylim_sq)
+plot_acf_clean(mean_acf_garch_sq, "GARCH (Media 1000 Sim^2)", ylim_sq)
+plot_acf_clean(mean_acf_egarch_sq, "EGARCH (Media 1000 Sim^2)", ylim_sq)
+plot_acf_clean(mean_acf_gjr_sq, "GJR-GARCH (Media 1000 Sim^2)", ylim_sq)
+```
+```{r}
+# 1. Funzione per calcolare la densità media su tutte le simulazioni
+# Utilizziamo un range di x comune per calcolare la densità negli stessi punti
+x_vals <- seq(min(real_vec), max(real_vec), length.out = 200)
+
+calc_mean_density <- function(matrice, x_vals) {
+  # Calcoliamo la densità per ogni colonna (simulazione) e interpoliamo sui punti x_vals
+  dens_list <- apply(matrice, 2, function(col) {
+    d <- density(col, from = min(x_vals), to = max(x_vals), n = 200)
+    return(d$y)
+  })
+  # Facciamo la media riga per riga delle densità stimate
+  rowMeans(dens_list)
+}
+
+# 2. Calcolo delle densità medie
+mean_dens_garch  <- calc_mean_density(sim_returns_real, x_vals)
+mean_dens_egarch <- calc_mean_density(sim_returns_egarch, x_vals)
+mean_dens_gjr    <- calc_mean_density(sim_returns_gjr, x_vals)
+
+# 3. Plot del confronto unico
+# Calcoliamo la densità dei dati reali come riferimento
+real_density <- density(real_vec, from = min(x_vals), to = max(x_vals), n = 200)
+
+plot(real_density, main="Confronto Densità Empiriche: Dati vs Modelli",
+     xlab="Rendimenti", ylab="Densità",
+     col="black", lwd=3, ylim=c(0, max(c(real_density$y, mean_dens_garch, mean_dens_egarch, mean_dens_gjr))))
+
+lines(x_vals, mean_dens_garch,  col="gray40", lwd=2, lty=2)
+lines(x_vals, mean_dens_egarch, col="blue",   lwd=2, lty=2)
+lines(x_vals, mean_dens_gjr,    col="red",    lwd=2, lty=2)
+
+# Aggiunta di una legenda
+legend("topright", 
+       legend=c("Dati Reali", "GARCH (Media)", "EGARCH (Media)", "GJR-GARCH (Media)"),
+       col=c("black", "gray40", "blue", "red"),
+       lwd=c(3, 2, 2, 2), lty=c(1, 2, 2, 2), cex=0.8)
 ```
 
 ```{r}
 par(mfrow=c(3,1))
-plot(as.numeric(sigma(sim)), type="l", main="Volatilità sGARCH (Simmetrico)", col="blue")
+plot(as.numeric(sigma(sim_real)), type="l", main="Volatilità sGARCH (Simmetrico)", col="blue")
 plot(as.numeric(sigma(sim_gjr)), type="l", main="Volatilità GJR-GARCH (Asimmetrico)", col="red")
 plot(as.numeric(sigma(sim_egarch)), type="l", main="Volatilità EGARCH (Esponenziale)", col="green")
+```
+```{r}
+# Estrazione medie
+media_garch  <- rowMeans(sim_real@path$sigmaSim)
+media_gjr    <- rowMeans(sim_gjr@path$sigmaSim)
+media_egarch <- rowMeans(sim_egarch@path$sigmaSim)
+
+# Plot unico con le 3 linee medie
+plot(media_garch, type="l", col="blue", lwd=2, ylim=range(c(media_garch, media_gjr, media_egarch)),
+     main="Confronto Volatilità Media Attesa", xlab="Index", ylab="Volatilità")
+lines(media_gjr, col="red", lwd=2)
+lines(media_egarch, col="green", lwd=2)
+legend("topright", legend=c("sGARCH", "GJR-GARCH", "EGARCH"), 
+       col=c("blue", "red", "green"), lwd=2)
 ```
 
 ```{r}
 library(tseries)
+adf.test(real_returns) 
 
 
-adf.test(sim_returns)
-adf.test(returns_gjr)
-adf.test(returns_egarch)
-adf.test(real_returns)
+adf.test(sim_vec)       # Per sGARCH
+adf.test(sim_vec_egarch)    # Per EGARCH
+adf.test(sim_vec_gjr)       # Per GJR-GARCH
 
 ```
 Test per confontare e valutare stazionarieta.ci aspettiamo p < 0.05 → conferma stazionarietà.
@@ -217,10 +764,10 @@ valuatre test piu robusto
 library(moments)
 
 
-summary(sim_returns)
-sd(sim_returns)
-kurtosis(sim_returns)
-skewness(sim_returns)
+summary(sim_vec)
+sd(sim_vec)
+kurtosis(sim_vec)
+skewness(sim_vec)
 
 
 
@@ -230,10 +777,10 @@ skewness(sim_returns)
 library(moments)
 
 
-summary(returns_gjr)
-sd(returns_gjr)
-kurtosis(returns_gjr)
-skewness(returns_gjr)
+summary(sim_vec_gjr)
+sd(sim_vec_gjr)
+kurtosis(sim_vec_gjr)
+skewness(sim_vec_gjr)
 
 
 ```
@@ -241,10 +788,10 @@ skewness(returns_gjr)
 library(moments)
 
 
-summary(returns_egarch)
-sd(returns_egarch)
-kurtosis(returns_egarch)
-skewness(returns_egarch)
+summary(sim_vec_egarch)
+sd(sim_vec_egarch)
+kurtosis(sim_vec_egarch)
+skewness(sim_vec_egarch)
 ```
 
 
@@ -284,27 +831,27 @@ plot_acf_no0 <- function(series, main_title) {
   abline(h = -conf, col="blue", lty=2)
   abline(h = 0, col="red", lty=2)
 }
-plot_acf_no0(sim_returns, "ACF Returns Simulati (senza lag 0)")
+plot_acf_no0(sim_vec, "ACF Returns Simulati (senza lag 0)")
 
 
 plot_acf_no0(real_returns, "ACF Returns EUR/USD (senza lag 0)")
 
 
-plot_acf_no0(sim_returns^2, "ACF Returns^2 Simulati (senza lag 0)")
+plot_acf_no0(sim_vec^2, "ACF Returns^2 Simulati (senza lag 0)")
 
 
 plot_acf_no0(real_returns^2, "ACF Returns^2 EUR/USD (senza lag 0)")
 
-plot_acf_no0(returns_egarch, "ACF Returns Simulati e (senza lag 0)")
+plot_acf_no0(sim_vec_gjr, "ACF Returns Simulati e (senza lag 0)")
 
 
-plot_acf_no0(returns_gjr, "ACF Returns gjr (senza lag 0)")
+plot_acf_no0(sim_vec_egarch, "ACF Returns gjr (senza lag 0)")
 
 
-plot_acf_no0(returns_egarch^2, "ACF Returns^2 e Simulati (senza lag 0)")
+plot_acf_no0(sim_vec_egarch^2, "ACF Returns^2 e Simulati (senza lag 0)")
 
 
-plot_acf_no0(returns_gjr^2, "ACF Returns^2 gjr (senza lag 0)")
+plot_acf_no0(sim_vec_gjr^2, "ACF Returns^2 gjr (senza lag 0)")
 
 ```
 quasi tutte le barre sono dentro gli intervalli quindi i returns non sono autocorrelati per i returns, mentre il contrario per i return^2
@@ -313,27 +860,27 @@ quasi tutte le barre sono dentro gli intervalli quindi i returns non sono autoco
 library(FinTS)
 
 
-ArchTest(sim_returns, lags=10)
+ArchTest(sim_vec, lags=10)
 
 
 
 ArchTest(real_returns, lags=10)
-ArchTest(returns_gjr, lags=10)
+ArchTest(sim_vec_egarch, lags=10)
 
 
 
-ArchTest(returns_egarch, lags=10)
+ArchTest(sim_vec_gjr, lags=10)
 
 
 ```
 p-value basso quindi effetto arch presente quindi i garch possono catturare la volatilita condizionata di eur/usd
 ```{r}
 par(mfrow=c(2,1))
-hist(sim_returns, breaks=50, probability=TRUE, main="Distribuzione Simulata")
+hist(sim_vec, breaks=50, probability=TRUE, main="Distribuzione Simulata")
 hist(real_returns, breaks=50, probability=TRUE, main="Distribuzione EUR/USD")
 par(mfrow=c(2,1))
-hist(returns_egarch, breaks=50, probability=TRUE, main="Distribuzione egarch")
-hist(returns_gjr, breaks=50, probability=TRUE, main="Distribuzione gjr")
+hist(sim_vec_egarch, breaks=50, probability=TRUE, main="Distribuzione egarch")
+hist(sim_vec_gjr, breaks=50, probability=TRUE, main="Distribuzione gjr")
 
 
 ```
@@ -384,7 +931,7 @@ sclego sul train cv il miglior modello
 get_mse_cv <- function(roll) {
   df <- as.data.frame(roll)
   
-    mse <- mean(((df$Realized - df$Mu)^2 - df$Sigma)^2)
+    mse <- mean(((df$Realized - df$Mu)^2 - df$Sigma^2)^2)
   return(mse)
 }
 
@@ -399,7 +946,7 @@ print(cv_results)
 ```
 ```{r}
 
-install.packages("forecast")
+
 
 
 library(forecast)
@@ -444,151 +991,60 @@ print(dm_summary)
 ```
 ```{r}
 
-spec_sgarch_fit <- ugarchspec(
-  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
-  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
-  distribution.model = "std" 
-)
-
-
-fit_sgarch <- ugarchfit(spec = spec_sgarch_fit, data = train_data)
-
-cat("\n--- RISULTATI DEL MODELLO sGARCH FITTATO ---\n")
-print(fit_sgarch@fit$matcoef) # Mostra i parametri stimati (mu, omega, alpha, beta, shape)
-
-
-fit_returns <- as.numeric(fitted(fit_sgarch))
-
-
-fit_returns <- na.omit(fit_returns)
-sim_returns <- na.omit(sim_returns)
-
-
-ks_test <- ks.test(sim_returns, fit_returns)
-
-
-library(tseries)
-library(moments)
-
-confronto_momenti <- data.frame(
-  Statistica = c("Media", "Dev.Standard", "Skewness", "Kurtosis"),
-  Simulato = c(mean(sim_returns), sd(sim_returns), skewness(sim_returns), kurtosis(sim_returns)),
-  Fittato = c(mean(fit_returns), sd(fit_returns), skewness(fit_returns), kurtosis(fit_returns))
-)
-
-print("--- Test di Kolmogorov-Smirnov ---")
-print(ks_test)
-
-print("--- Confronto Momenti Statistici ---")
-print(confronto_momenti)
-```
-```{r}
-
-spec_sgarch_fit <- ugarchspec(
-  variance.model = list(model = "sGARCH", garchOrder = c(1,1)),
-  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
-  distribution.model = "std" 
-)
-
-fit_sgarch <- ugarchfit(spec = spec_sgarch_fit, data = train_data)
-
-
-vol_fit <- as.numeric(sigma(fit_sgarch))
-vol_sim <- as.numeric(sigma(sim)) 
-
-
-vol_fit <- vol_fit[!is.na(vol_fit)]
-vol_sim <- vol_sim[!is.na(vol_sim)]
-
-
-ks_test_vol <- ks.test(vol_sim, vol_fit)
-
-
-library(moments)
-
-confronto_volatilta <- data.frame(
-  Statistica    = c("Media Vol", "Dev.Std Vol", "Skewness Vol", "Kurtosis Vol"),
-  Simulata_Sim  = c(mean(vol_sim), sd(vol_sim), skewness(vol_sim), kurtosis(vol_sim)),
-  Fittata_Data  = c(mean(vol_fit), sd(vol_fit), skewness(vol_fit), kurtosis(vol_fit))
-)
-
-
-cat("\n--- TEST DI KOLMOGOROV-SMIRNOV (DISTRIBUZIONE VOLATILITÀ) ---\n")
-print(ks_test_vol)
-
-cat("\n--- CONFRONTO MOMENTI STATISTICI DELLA VOLATILITÀ ---\n")
-print(confronto_volatilta)
-
-
-plot(density(vol_fit), col = "blue", main = "Confronto Densità Volatilità", lwd = 2)
-lines(density(vol_sim), col = "red", lty = 2, lwd = 2)
-legend("topright", legend = c("Fittata", "Simulata"), col = c("blue", "red"), lty = 1:2)
 
 ```
 ```{r}
 
-spec_gjr_fit <- ugarchspec(
-  variance.model = list(model = "gjrGARCH", garchOrder = c(1,1)),
-  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
-  distribution.model = "std" 
-)
-fit_gjr <- ugarchfit(spec = spec_gjr_fit, data = train_data)
 
 
-vol_gjr_fit  <- as.numeric(sigma(fit_gjr))
-vol_gjr_sim  <- as.numeric(sigma(sim_gjr)) 
 
-
-vol_gjr_fit <- vol_gjr_fit[!is.na(vol_gjr_fit)]
-vol_gjr_sim <- vol_gjr_sim[!is.na(vol_gjr_sim)]
-
-
-ks_gjr <- ks.test(vol_gjr_sim, vol_gjr_fit)
-
-confronto_gjr <- data.frame(
-  Statistica    = c("Media Vol", "Dev.Std Vol", "Skewness Vol", "Kurtosis Vol"),
-  Simulata_GJR  = c(mean(vol_gjr_sim), sd(vol_gjr_sim), skewness(vol_gjr_sim), kurtosis(vol_gjr_sim)),
-  Fittata_GJR   = c(mean(vol_gjr_fit), sd(vol_gjr_fit), skewness(vol_gjr_fit), kurtosis(vol_gjr_fit))
-)
-
-print("--- RISULTATI GJR-GARCH: SIM vs FIT ---")
-print(ks_gjr)
-print(confronto_gjr)
 ```
+
 ```{r}
 
-spec_egarch_fit <- ugarchspec(
-  variance.model = list(model = "eGARCH", garchOrder = c(1,1)),
-  mean.model     = list(armaOrder = c(0,0), include.mean = TRUE),
+
+```
+```{r}
+library(rugarch)
+
+
+
+spec_gjrgarch <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE),
   distribution.model = "std" 
 )
-fit_egarch <- ugarchfit(spec = spec_egarch_fit, data = train_data)
 
 
-vol_e_fit  <- as.numeric(sigma(fit_egarch))
-vol_e_sim  <- as.numeric(sigma(sim_egarch)) 
+fit_gjrgarch <- ugarchfit(spec = spec_gjrgarch, data = train_data)
 
 
-vol_e_fit <- vol_e_fit[!is.na(vol_e_fit)]
-vol_e_sim <- vol_e_sim[!is.na(vol_e_sim)]
+cat("\n--- RISULTATI DEL MODELLO GJRGARCH (TRAIN SET) ---\n")
+print(fit_gjrgarch)
 
-I
-ks_e <- ks.test(vol_e_sim, vol_e_fit)
-
-confronto_egarch <- data.frame(
-  Statistica    = c("Media Vol", "Dev.Std Vol", "Skewness Vol", "Kurtosis Vol"),
-  Simulata_e    = c(mean(vol_e_sim), sd(vol_e_sim), skewness(vol_e_sim), kurtosis(vol_e_sim)),
-  Fittata_e     = c(mean(vol_e_fit), sd(vol_e_fit), skewness(vol_e_fit), kurtosis(vol_e_fit))
-)
-
-print("--- RISULTATI eGARCH: SIM vs FIT ---")
-print(ks_e)
-print(confronto_egarch)
 ```
 
 lo uso per scegliere il modello migliore, l'egrarch è l'unico stabile , devo normalizzare gli mse
 ```{r}
+library(rugarch)
 
+
+
+spec_garch <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0), include.mean = TRUE),
+  distribution.model = "std" 
+)
+
+
+fit_garch <- ugarchfit(spec = spec_garch, data = train_data)
+
+
+cat("\n--- RISULTATI DEL MODELLO GARCH (TRAIN SET) ---\n")
+print(fit_garch)
+```
+
+```{r}
 library(rugarch)
 
 
@@ -605,9 +1061,8 @@ fit_egarch <- ugarchfit(spec = spec_egarch, data = train_data)
 
 cat("\n--- RISULTATI DEL MODELLO EGARCH (TRAIN SET) ---\n")
 print(fit_egarch)
-
-
 ```
+
 
 ```{r}
 
@@ -623,7 +1078,6 @@ print(coef(fit_e_train_full))
 ```
 parametri e garch train
 ```{r}
-
 spec_e_final <- ugarchspec(
   variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),
   mean.model = list(armaOrder = c(0, 0), include.mean = TRUE), 
@@ -639,18 +1093,33 @@ final_roll <- ugarchroll(
   refit.every = 20,         
   calculate.VaR = FALSE
 )
+```
 
 
+```{r}
 res_test <- as.data.frame(final_roll)
 
 
-mse_final_test <- mean((res_test$Realized^2 - res_test$Sigma^2)^2)
+mse_final_test <-  mean(((res_test$Realized - res_test$Mu)^2 - res_test$Sigma^2)^2)
 
 
 cat("MSE Finale sul Test Set (Rolling):", mse_final_test)
 
 ```
 mse del test 
+```{r}
+# Data di inizio del test set (primo giorno della rolling)
+res_test <- as.data.frame(final_roll)
+cat("Primo giorno test set (rolling):", as.character(min(as.Date(rownames(res_test)))))
+cat("\nUltimo giorno test set (rolling):", as.character(max(as.Date(rownames(res_test)))))
+cat("\nNumero di giorni di trading nel test set:", nrow(res_test))
+
+# Per capire da dove parte real_returns
+cat("\nInizio real_returns:", as.character(start(real_returns)))
+cat("\nFine real_returns:", as.character(end(real_returns)))
+cat("\nn_train usato:", n_train)
+```
+
 ```{r}
 
 last_coef_block <- final_roll@model$coef[[length(final_roll@model$coef)]]
@@ -665,6 +1134,7 @@ last_pars <- as.list(last_estimates)
 print(last_pars)
 names(last_pars)
 ```
+
 ```{r}
 
 spec_sim <- ugarchspec(
@@ -787,6 +1257,153 @@ ggplot(forecast_summary, aes(x = Giorno)) +
         panel.grid.minor = element_blank())
 ```
 plot IC montecarlo
+```{r}
+library(ggplot2)
+library(scales)
+library(quantmod)
+library(dplyr)
+
+# ----------------------------------------------------------------
+# SCARICA PREZZI REALI EUR/USD
+# ----------------------------------------------------------------
+getSymbols("EURUSD=X", src = "yahoo",
+           from = "2025-04-01",
+           to   = "2025-05-06",  # data fine forecast
+           auto.assign = TRUE)
+
+# Forza filtro con window() su oggetto xts
+eurusd_filtered <- window(`EURUSD=X`,
+                           start = as.Date("2025-04-01"),
+                           end   = as.Date("2025-05-05"))
+
+real_prices <- data.frame(
+  Giorno_Data  = index(eurusd_filtered),
+  Prezzo_Reale = as.numeric(Cl(eurusd_filtered))
+) %>%
+  filter(!is.na(Prezzo_Reale))
+
+print(range(real_prices$Giorno_Data))
+print(nrow(real_prices))
+
+# ----------------------------------------------------------------
+# DATA DI AGGANCIO E PREZZO INIZIALE
+# ----------------------------------------------------------------
+last_date <- as.Date("2025-04-15")
+P0        <- as.numeric(real_prices[real_prices$Giorno_Data == last_date,
+                                     "Prezzo_Reale"])
+if (length(P0) == 0 || is.na(P0)) P0 <- 1.129267
+cat("Prezzo di aggancio:", P0, "\n")
+
+# ----------------------------------------------------------------
+# DATE FORECAST — solo giorni lavorativi
+# ----------------------------------------------------------------
+forecast_dates_all <- seq.Date(from       = last_date + 1,
+                                by         = "day",
+                                length.out = 40)
+forecast_dates <- forecast_dates_all[
+  !weekdays(forecast_dates_all) %in% c("Saturday", "Sunday",
+                                        "Sabato",   "Domenica")
+][1:20]
+
+forecast_summary$Data <- forecast_dates
+
+cat("Range forecast:", as.character(range(forecast_summary$Data)), "\n")
+cat("Range real:    ", as.character(range(real_prices$Giorno_Data)), "\n")
+
+# ----------------------------------------------------------------
+# PUNTO DI AGGANCIO — unisce serie storica e ventaglio
+# ----------------------------------------------------------------
+anchor <- data.frame(
+  Giorno   = 0,
+  Mediana  = P0,
+  Lower_95 = P0,
+  Upper_95 = P0,
+  Lower_80 = P0,
+  Upper_80 = P0,
+  Data     = last_date
+)
+
+forecast_plot <- rbind(anchor, forecast_summary)
+
+# ----------------------------------------------------------------
+# GRAFICO
+# ----------------------------------------------------------------
+ggplot() +
+
+  # Intervallo 95%
+  geom_ribbon(data = forecast_plot,
+              aes(x = Data, ymin = Lower_95, ymax = Upper_95,
+                  fill = "Intervallo 95%"),
+              alpha = 0.2) +
+
+  # Intervallo 80%
+  geom_ribbon(data = forecast_plot,
+              aes(x = Data, ymin = Lower_80, ymax = Upper_80,
+                  fill = "Intervallo 80%"),
+              alpha = 0.4) +
+
+  # Mediana simulazione
+  geom_line(data = forecast_plot,
+            aes(x = Data, y = Mediana,
+                color = "Mediana (eGARCH)"),
+            linewidth = 1.2, linetype = "dashed") +
+
+  # Serie reale prezzi
+  geom_line(data = real_prices,
+            aes(x = Giorno_Data, y = Prezzo_Reale,
+                color = "Prezzo Reale EUR/USD"),
+            linewidth = 1.5) +
+
+  # Linea verticale inizio previsione
+  geom_vline(xintercept = as.numeric(last_date),
+             color = "red", linetype = "dashed", alpha = 0.7) +
+  annotate("text",
+           x     = last_date + 1,
+           y     = max(forecast_plot$Upper_95) * 0.9995,
+           label = "Inizio Previsione\n(15/04)",
+           hjust = 0, size = 3.2, color = "red") +
+
+  # Scale
+  scale_fill_manual(
+    name   = "Intervalli di Probabilità",
+    values = c("Intervallo 95%" = "steelblue",
+               "Intervallo 80%" = "steelblue")
+  ) +
+  scale_color_manual(
+    name   = "",
+    values = c("Prezzo Reale EUR/USD" = "black",
+               "Mediana (eGARCH)"     = "darkblue")
+  ) +
+  scale_x_date(
+    date_labels = "%d-%m",
+    date_breaks = "1 week",
+    limits      = c(as.Date("2025-04-01"), as.Date("2025-05-06"))
+  ) +
+  scale_y_continuous(labels = number_format(accuracy = 0.001)) +
+
+  labs(
+    title    = "Proiezione Monte Carlo: Evoluzione del Prezzo EUR/USD",
+    subtitle = "Simulazione a 20 giorni basata su modello eGARCH(1,1) — 10.000 sentieri",
+    x        = "Data",
+    y        = "Prezzo EUR/USD",
+    caption  = "Fonte: Elaborazione su dati storici tramite modello eGARCH + Monte Carlo"
+  ) +
+
+  theme_minimal() +
+  theme(
+    legend.position  = "bottom",
+    plot.title       = element_text(face = "bold", size = 14),
+    panel.grid.minor = element_blank(),
+    axis.text.x      = element_text(angle = 45, hjust = 1)
+  )
+  
+```
+```{r}
+print(range(real_prices$Giorno_Data))
+print(nrow(real_prices))
+print(head(real_prices))
+print(tail(real_prices))
+```
 
 ```{r}
 
@@ -803,7 +1420,7 @@ dataset$Date_dt <- as.Date(as.character(dataset$Date), format = "%Y-%m-%d")
 
 news_split_sentiment <- dataset %>%
   
-  filter(!is.na(Date_dt), Date_dt >= as.Date("2020-01-01"), !is.na(economics_finance)) %>%
+  filter(!is.na(Date_dt), Date_dt >= as.Date("2022-10-18"), !is.na(economics_finance)) %>%
   
   
   mutate(
@@ -845,9 +1462,9 @@ print(paste("Data inizio:", min(news_split_sentiment$Date_dt)))
 print(paste("Data fine:", max(news_split_sentiment$Date_dt)))
 
 
-write.csv(news_split_sentiment, "news_per_sentiment_split.csv", row.names = FALSE, quote = TRUE)
+write.csv(news_split_sentiment, "news_per_sentiment_split2.csv", row.names = FALSE, quote = TRUE)
 
-cat("\nFile 'news_per_sentiment_split.csv' generato con successo e pulito per Python!\n")
+cat("\nFile 'news_per_sentiment_split3.csv' generato con successo e pulito per Python!\n")
 ```
 ```{r}
 head(dataset$Date)
@@ -898,7 +1515,7 @@ library(zoo)
 library(lubridate)
 
 
-data_inizio_limite <- as.Date("2022-10-17")
+data_inizio_limite <- as.Date("2018-01-18")
 data_fine_limite   <- as.Date("2025-04-16")
 
 
@@ -921,7 +1538,7 @@ trova_prossimo_aperto <- function(data_notizia, lista_aperti) {
 }
 
 
-df_sentiment <- read.csv('news_con_sentiment_split_finale1.csv')
+df_sentiment <- read.csv('news_con_sentiment_split_finale7.csv')
 
 daily_sent_fixed <- df_sentiment %>%
   mutate(Date_dt = as.Date(as.character(Date_dt))) %>%
@@ -949,25 +1566,20 @@ daily_sent_fixed <- df_sentiment %>%
 dataset_final_bilstm <- dati_prezzi_vol %>%
   mutate(Date = as.Date(as.character(Date))) %>%
   filter(Date >= data_inizio_limite & Date <= data_fine_limite) %>%
-  
-  
   left_join(daily_sent_fixed, by = c("Date" = "Date_for_join")) %>%
-  
-  
   mutate(
     sent_EUR = replace_na(sent_EUR, 0),
     sent_USD = replace_na(sent_USD, 0)
   ) %>%
-  
   arrange(Date) %>%
-  
-  
+  # 1. Calcola il rendimento odierno
   mutate(Log_Return = log(Prezzo / lag(Prezzo))) %>%
+  # 2. IL TARGET DEVE ESSERE IL RENDIMENTO DI DOMANI RISPETTO A OGGI
+  # Ma per evitare confusione in Python, lo chiamiamo 'Next_Day_Return'
+  # ELIMINA IL LEAD. Usa il rendimento di oggi come target.
   mutate(Target = ifelse(lead(Log_Return) > 0, 1, 0)) %>%
-  
-  
-  filter(!is.na(Log_Return) & !is.na(Target)) %>%
-  filter(Log_Return != 0)
+  # 3. CRITICO: Rimuovi l'ultima riga perché non ha un Target (lead è NA)
+  filter(!is.na(Log_Return) & !is.na(Target) & Log_Return != 0)
 
 
 cat("\n--- REPORT DATASET UNIFICATO (WEEKEND & FESTIVI GESTITI) ---")
@@ -977,8 +1589,32 @@ cat("\nDistribuzione Target:\n")
 print(table(dataset_final_bilstm$Target))
 
 
-write.csv(dataset_final_bilstm, "input_per_bilstm_final1.csv", row.names = FALSE)
+write.csv(dataset_final_bilstm, "input_per_bilstm_final5.csv", row.names = FALSE)
 ```
+
+```{r}
+# Controlla i NA nel dataset finale
+colSums(is.na(dataset_final_bilstm))
+```
+```{r}
+# Verifica che il sentiment non sia quasi tutto zero
+cat("Giorni con sent_EUR = 0:", sum(dataset_final_bilstm$sent_EUR == 0))
+cat("Giorni con sent_USD = 0:", sum(dataset_final_bilstm$sent_USD == 0))
+```
+```{r}
+dataset_final_bilstm %>%
+  mutate(anno = format(Date, "%Y")) %>%
+  group_by(anno) %>%
+  summarise(
+    giorni_zero_EUR = sum(sent_EUR == 0),
+    giorni_totali = n(),
+    pct_zero_EUR = round(100 * giorni_zero_EUR / giorni_totali, 1)
+  ) %>%
+  print()
+```
+
+
+
 ```{r}
 range(daily_sent_fixed$Date_for_join)
 
@@ -994,6 +1630,7 @@ head(dataset_final_bilstm, 10)
 print("--- ULTIME RIGHE (TAIL) ---")
 tail(dataset_final_bilstm, 10)
 ```
+
 ```{r}
 
 test_data_row <- dataset_final_bilstm %>% 
